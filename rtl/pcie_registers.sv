@@ -4,14 +4,26 @@ module pcie_registers (
     input logic         clk,
     input logic         reset,
 
+    // Write Interface
     input logic         wr_en,
     input logic [7:0]   wr_addr,
     input logic [31:0]  wr_data,
 
-    inout logic         rd_en,
+    // Read Interface
+    input logic         rd_en,
     input logic [7:0]   rd_addr,
-
     output logic [31:0] rd_data,
+
+    // Configuration outputs to hardware
+    output logic [31:0] src_addr,
+    output logic [31:0] length,
+
+    // Command Output
+    output logic        start_pulse,
+
+    // Hardware status inputs
+    input logic         busy,
+    input logic         done
 );
 
 /*
@@ -22,65 +34,88 @@ Register Map and Definitions:
     0x0C: Length Register
 */
 
-logic [31:0] control_reg;
-logic [31:0] status_reg;
-logic [31:0] src_addr_reg;
-logic [31:0] length_reg;
 
-localparam logic [7:0] CONTROL_ADDR = 8'h00;
-localparam logic [7:0] STATUS_ADDR = 8'h04;
-localparam logic [7:0] SRC_ADDR_ADDR = 8'h08;
-localparam logic [7:0] LENGTH_ADDR = 8'h0C;
+    /*
+        Address Map
+    */
+    localparam logic [7:0] CONTROL_ADDR = 8'h00;
+    localparam logic [7:0] STATUS_ADDR = 8'h04;
+    localparam logic [7:0] SRC_ADDR_ADDR = 8'h08;
+    localparam logic [7:0] LENGTH_ADDR = 8'h0C;
 
-// Write Logic
-always_ff @(posedge clk) begin
-    if (reset) begin
-        control_reg <= 32'b0;
-        status_reg <= 32'h0;
-        src_addr_reg <= 32'b0;
-        length_reg <= 32'b0;
-    end 
-    else if (wr_en) begin
-        case (wr_addr)
-            CONTROL_ADDR:
-                control_reg <= wr_data;
+    // Write Logic
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            src_addr <= 32'h00000000;
+            length <= 32'h00000000;
+            start_pulse <= 1'b0;
+        end 
+        else begin
 
-            SRC_ADDR_ADDR:
-                src_addr_reg <= wr_data;
+            // START is a one-cycle pulse
+            start_pulse <= 1'b0;
 
-            LENGTH_ADDR:
-                length_reg <= wr_data;
-            
-            default: begin
-                // Invalid address, do nothing or handle error
-            end
-        endcase
+            if (wr_en) begin
+
+                case (wr_addr)
+
+                    CONTROL_ADDR: begin
+                        if (wr_data[0])
+                            start_pulse <= 1'b1; // Set start pulse if bit 0 is set
+                    end
+
+                    SRC_ADDR_ADDR: begin
+                        src_addr <= wr_data;
+                    end
+
+                    LENGTH_ADDR: begin
+                        length <= wr_data;
+                    end
+
+                    default: begin
+                        // Invalid address, ignore write or handle error
+                    end
+                endcase
+                
+            endcase
+        end
     end
-end
 
-// Read Logic
-always_comb begin
-    rd_data = 32'h0;
+    // Read Logic
+    always_comb begin
+        rd_data = 32'h00000000; // Default value
 
-    if(rd_en) begin
-        case (rd_addr)
-            CONTROL_ADDR:
-                rd_data = control_reg;
+        if(rd_en) begin
 
-            STATUS_ADDR:
-                rd_data = status_reg;
+            case (rd_addr)
 
-            SRC_ADDR_ADDR:
-                rd_data = src_addr_reg;
+                CONTROL_ADDR: begin
+                    rd_data = 32'h00000000; // Control register is write-only, return 0
+                end
 
-            LENGTH_ADDR:
-                rd_data = length_reg;
+                STATUS_ADDR: begin
+                    // STATUS[0] = BUSY
+                    //STATUS[1] = DONE
+                    rd_data = {
+                        30'b0, 
+                        done, 
+                        busy
+                    };
+                end
 
-            default:
-                // Invalid address, return 0 or handle error
-                rd_data = 32'hDEADBEEF; // Example error code
-        endcase
+                SRC_ADDR_ADDR: begin
+                    rd_data = src_addr;
+                end
+
+                LENGTH_ADDR: begin
+                    rd_data = length;
+                end
+
+                default:
+                    // Invalid address, return 0 or handle error
+                    rd_data = 32'hDEADBEEF; // Example error code
+            endcase
+        end
     end
-end
 
 endmodule
