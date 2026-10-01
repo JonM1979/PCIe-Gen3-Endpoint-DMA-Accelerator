@@ -4,12 +4,13 @@ module pcie_device (
     input logic         reset,
 
     input logic         wr_en,
-    input logic [7:0]   wr_addr,
+    input logic [11:0]   wr_addr,
     input logic [31:0]  wr_data,
+    input logic [3:0] wr_be,
 
     input logic         rd_en,
-    input logic [7:0]   rd_addr,
-    output logic [31:0] rd_data,
+    input logic [11:0]   rd_addr,
+    output logic [31:0] rd_data
 );
 
     /*
@@ -35,6 +36,7 @@ module pcie_device (
         .wr_en(wr_en),
         .wr_addr(wr_addr),
         .wr_data(wr_data),
+        .wr_be(wr_be),
 
         .rd_en(rd_en),
         .rd_addr(rd_addr),
@@ -43,7 +45,7 @@ module pcie_device (
         .src_addr(src_addr),
         .length(length),
 
-        .start_pulse(start_pulse)
+        .start_pulse(start_pulse),
 
         .busy(busy),
         .done(done)

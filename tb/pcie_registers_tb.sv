@@ -22,18 +22,30 @@ module pcie_registers_tb;
         DUT Instance
     */
 
-    pcie_device dut (
+    pcie_tlp_device dut (
         .clk(clk),
         .reset(reset),
 
-        .wr_en(wr_en),
-        .wr_addr(wr_addr),
-        .wr_data(wr_data),
-
-        .rd_en(rd_en),
-        .rd_addr(rd_addr),
-        .rd_data(rd_data)
+        .tlp_valid(tlp_valid),
+        .tlp_is_write(tlp_is_write),
+        .tlp_addr(tlp_addr),
+        .tlp_data(tlp_data),
+        .tlp_tag(tlp_tag),
+        
+        .cpl_valid(cpl_valid),
+        .cpl_tag(cpl_tag),
+        .cpl_data(cpl_data)
     );
+
+    logic        tlp_valid;
+    logic        tlp_is_write;
+    logic [31:0] tlp_addr;
+    logic [31:0] tlp_data;
+    logic [7:0]  tlp_tag;
+
+    logic       cpl_valid;
+    logic [7:0] cpl_tag;
+    logic [31:0] cpl_data;
 
     /*
         Clock Generation
@@ -48,8 +60,8 @@ module pcie_registers_tb;
         Register Write Task
     */   
 
-    task automatic write_reg(
-        input logic [7:0] address,
+    task automatic send_mem_write(
+        input logic [31:0] address,
         input logic [31:0] data   
     );
         begin
@@ -57,19 +69,82 @@ module pcie_registers_tb;
             // Drive signals away from positive edge
             @(negedge clk);
 
-            wr_en = 1'b1;
-            wr_addr = address;
-            wr_data = data;
+            tlp_valid = 1'b1;
+            tlp_is_write = 1'b1;
+            tlp_addr = address;
+            tlp_data = data;
+            tlp_tag = 8'h00;
 
             // Samples these values on the next posedge
             @(negedge clk);
 
             // Remove write request
-            wr_en = 1'b0;
-            wr_addr = 8'h00;
-            wr_data = 32'h00000000;
+            tlp_valid = 1'b0;
+            tlp_is_write = 1'b0;
+            tlp_addr = 32'h00000000;
+            tlp_data = 32'h00000000;
         end
     endtask
+
+    /*
+        Register Mem Read Check
+    */
+    task automatic send_mem_read_check(
+        input logic [31:0] address,
+        input logic [7:0] tag,
+        input logic [31:0] expected
+    );
+        begin
+            
+            // Drive signals away from positive edge
+            @(negedge clk);
+
+            tlp_valid = 1'b1;
+            tlp_is_write = 1'b0;
+            tlp_addr = address;
+            tlp_data = 32'h00000000;
+            tlp_tag = tag;
+
+            // Samples these values on the next posedge
+            @(negedge clk);
+
+            tlp_valid = 1'b0;
+
+            // Wait for completion
+            wait(cpl_valid == 1'b1);
+
+            #1; // Allow combinational logic to settle
+
+            // Check completion tag
+            if(cpl_tag != tag) begin
+
+                $error(
+                    "COMPLETION TAG FAIL: expected=%02h actual=%02h",
+                    tag,
+                    cpl_tag
+                );
+            end
+        
+            // Check completion data
+            if(cpl_data != expected) begin
+                $error(
+                    "READFAIL: address=0x%08h expected=0x%08h actual=0x%08h",
+                    address,
+                    expected,
+                    cpl_data
+                );
+            end
+            else begin
+                $display(
+                    "PASS: address=0x%08h tag=%02h data=0x%08h",
+                    address,
+                    cpl_tag,
+                    cpl_data
+                );
+            end
+        end
+    endtask
+
 
     /*
         Register Read and Check Task
