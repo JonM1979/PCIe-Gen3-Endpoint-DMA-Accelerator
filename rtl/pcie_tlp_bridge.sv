@@ -47,25 +47,55 @@ module pcie_tlp_bridge (
         Simplified PCIe Completion
     */
     output logic        cpl_valid,
+    input logic         cpl_ready,
+
     output logic [2:0] cpl_status, // 00 = Success, 01 = Unsupported Request, 10 = Config Request, 11 = Completer Abort
     output logic [15:0] cpl_requester_id,
     output logic [7:0]  cpl_tag,
+
     output logic [31:0] cpl_data
 );
 
+    // REQUEST TYPE CODES
     localparam logic [1:0] MEM_READ  = 2'b00;
     localparam logic [1:0] MEM_WRITE = 2'b01;
 
+    // COMPLETION STATUS CODES
     localparam logic [2:0] CPL_SUCCESS = 3'b000;
     localparam logic [2:0] CPL_UR= 3'b001;
 
+    // Internal Completion Buffer
+    logic cpl_valid_reg;
+    logic [2:0] cpl_status_reg;
+
+    logic [15:0] cpl_requester_id_reg;
+    logic [7:0] cpl_tag_reg;
+
+    logic [31:0] cpl_data_reg;
+
     logic valid_one_dw_request;
+
+    logic completion_slot_available;
+    logic req_fire;
+
+    /*
+        Output Completion Bffer
+    */
+    always_comb begin
+        cpl_valid = cpl_valid_reg;
+        cpl_status = cpl_status_reg;
+
+        cpl_requester_id = cpl_requester_id_reg;
+        cpl_tag = cpl_tag_reg;
+
+        cpl_data = cpl_data_reg;
+    end
 
     /*
         Request Validation
     */
     always_comb begin
-        valid_one_dw_request = bar0_hit && (req_dw_count == 11'd1) && (req_first_be != 4'h0) && (req_last_be != 4'h0);
+        valid_one_dw_request = bar0_hit && (req_dw_count == 11'd1) && (req_first_be != 4'b0000) && (req_last_be != 4'b0000);
     end
 
     /*
